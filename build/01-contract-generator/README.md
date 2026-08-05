@@ -76,7 +76,7 @@ kind of thing that only shows up in production, on the tenth company.
 - **Read-then-write on the counter** with the increment inside a single
   execution to keep numbering sequential
 
-📄 `workflow.json` — importable, credentials and document IDs removed
+📄 `workflow.json` — Published as a demo variant — contract template and organisation details replaced with placeholders. Structure and logic are unchanged from production, credentials and document IDs removed, 
 
 ---
 
