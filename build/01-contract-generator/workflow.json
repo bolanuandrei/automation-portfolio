@@ -1,0 +1,524 @@
+{
+  "name": "Sponsorship Contract Generator",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "company-lookup",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "REDACTED",
+      "name": "Webhook Company Lookup",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -656,
+        112
+      ],
+      "webhookId": "REDACTED"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate the tax ID locally BEFORE spending a metered registry API call.\n// Most bad input is a typo, and typos are free to catch here.\nconst q = $input.first().json.query || {};\nlet taxId = String(q.tax_id || '')\n  .toUpperCase()\n  .replace(/^[A-Z]{2}/, '')      // strip country prefix if present\n  .replace(/[^0-9]/g, '');       // digits only\n\nif (taxId.length < 2 || taxId.length > 10) {\n  return [{ json: {\n    valid: false,\n    found: false,\n    message: 'Invalid tax ID. Enter digits only, e.g. 12345678'\n  } }];\n}\nreturn [{ json: { valid: true, tax_id: taxId } }];\n"
+      },
+      "id": "REDACTED",
+      "name": "Validate Tax ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "REDACTED",
+      "name": "Tax ID Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.example-registry.com/companies/{{ $json.tax_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "REDACTED"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "REDACTED",
+      "name": "Company Registry API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Defensive mapping of the registry response.\n// The upstream API returns inconsistent field names across company types,\n// so try several candidate keys per field instead of trusting one shape.\nconst d = $input.first().json || {};\nconst get = (...keys) => {\n  for (const k of keys) {\n    if (d[k] !== undefined && d[k] !== null && d[k] !== '') return d[k];\n  }\n  return '';\n};\n\nconst legalName = get('legal_name', 'name', 'company_name');\nif (!legalName) {\n  return [{ json: {\n    found: false,\n    message: 'Company not found. Check the tax ID.',\n    legal_name: '', tax_id: '', reg_number: '', address: ''\n  } }];\n}\n\nconst address = [get('address', 'street'), get('city', 'locality'), get('county', 'region')]\n  .filter(Boolean).join(', ');\n\nreturn [{ json: {\n  found: true,\n  message: 'Company found: ' + legalName,\n  legal_name: legalName,\n  tax_id: String(get('tax_id', 'vat_id')),\n  reg_number: get('registration_number', 'reg_number'),\n  address: address\n} }];\n"
+      },
+      "id": "REDACTED",
+      "name": "Map Registry Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "REDACTED",
+      "name": "Respond Lookup",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "contract-request",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "REDACTED",
+      "name": "Webhook Contract Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -672,
+        400
+      ],
+      "webhookId": "REDACTED"
+    },
+    {
+      "parameters": {
+        "jsCode": "// === Build contract HTML + assign sequential registry number ===\n// Node mode: \"Run Once for All Items\" (default). Do not change.\n\nconst b = $('Webhook Contract Request').first().json.body || {};\n\n// --- Shared-secret check against the hidden field posted by the form ---\n// NOTE: inject this from an environment variable or a credential.\n// Never hardcode the value in the workflow definition.\nconst SHARED_SECRET = 'REPLACE_WITH_ENV_VAR';\nif ((b.secret || '') !== SHARED_SECRET) {\n  throw new Error('Invalid secret - request rejected');\n}\n\n// --- Sequential contract number: CTR1, CTR2, ... = highest existing + 1 ---\n// Scan every cell returned by the registry sheet for a CTR<number> pattern.\nlet maxN = 0;\nfor (const r of $('Read Contract Registry').all()) {\n  for (const k in r.json) {\n    const m = String(r.json[k]).match(/^CTR(\\d+)$/i);\n    if (m) { const n = parseInt(m[1], 10); if (n > maxN) maxN = n; }\n  }\n}\nconst contractNo = 'CTR' + (maxN + 1);\n\n// --- Escape everything that came from user input ---\nconst esc = (s) => String(s || '')\n  .replace(/&/g, '&amp;').replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n\n// --- Date: accept yyyy-mm-dd or dd.mm.yyyy; fall back to today in local tz ---\nconst now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Bucharest' }));\nconst p = (n) => String(n).padStart(2, '0');\nlet contractDate = String(b.contract_date || '').trim();\nconst mIso = contractDate.match(/^(\\d{4})-(\\d{2})-(\\d{2})/);\nif (mIso) { contractDate = mIso[3] + '.' + mIso[2] + '.' + mIso[1]; }\nif (!/^\\d{2}\\.\\d{2}\\.\\d{4}$/.test(contractDate)) {\n  contractDate = p(now.getDate()) + '.' + p(now.getMonth() + 1) + '.' + now.getFullYear();\n}\n\n// --- Amount with thousands separator ---\nconst amountNum = parseFloat(\n  String(b.amount || '0').replace(/[^0-9.,]/g, '').replace(',', '.')\n) || 0;\nconst amount = amountNum.toLocaleString('en-US');\n\nconst signatory = (esc(b.signatory_first_name) + ' ' + esc(b.signatory_last_name)).trim();\n\n// ====================================================================\n//  CONTRACT TEMPLATE - edit the text freely.\n//  Do NOT remove or rename the {{...}} tokens: data is injected there.\n//  Beneficiary details below are placeholders for this public demo.\n// ====================================================================\nconst TEMPLATE = `<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<style>\n  @page { margin: 2cm 2.2cm; }\n  body { font-family: 'DejaVu Sans', Arial, sans-serif; font-size: 10.5pt; line-height: 1.45; color: #111; }\n  h1 { font-size: 14pt; text-align: center; margin-bottom: 2px; letter-spacing: 1px; }\n  .no { text-align: center; margin-top: 0; margin-bottom: 18px; }\n  h2 { font-size: 11pt; margin: 14px 0 6px 0; }\n  p { margin: 5px 0; text-align: justify; }\n  ul { margin: 4px 0 4px 18px; padding: 0; }\n  li { margin: 3px 0; text-align: justify; }\n  table.signatures { width: 100%; margin-top: 30px; border-collapse: collapse; }\n  table.signatures td { width: 50%; vertical-align: top; padding: 4px; }\n  .sign-space { height: 70px; }\n</style>\n</head>\n<body>\n\n<h1>SPONSORSHIP AGREEMENT</h1>\n<p class=\"no\">No. {{CONTRACT_NO}}, dated {{CONTRACT_DATE}}</p>\n\n<h2>I. PARTIES</h2>\n\n<p>1.1. <strong>{{SPONSOR_NAME}}</strong>, registered office at {{SPONSOR_ADDRESS}},\ntax ID {{SPONSOR_TAX_ID}}, company registration no. {{SPONSOR_REG_NO}},\nbank account {{SPONSOR_IBAN}} held at {{SPONSOR_BANK}},\nrepresented by {{SPONSOR_SIGNATORY}}, acting as {{SPONSOR_ROLE}},\nhereinafter the <strong>Sponsor</strong>,</p>\n\n<p style=\"text-align:center;\">and</p>\n\n<p>1.2. <strong>Example Foundation</strong>, a non-profit organisation,\nregistered office at 1 Example Street, Example City,\ntax ID 00000000, bank account XX00EXAMPLE0000000000000\nheld at Example Bank, represented by its President,\nhereinafter the <strong>Beneficiary</strong>,</p>\n\n<p>have agreed to enter into this sponsorship agreement under the following terms:</p>\n\n<h2>II. SUBJECT</h2>\n\n<p>2.1. The Sponsor grants the Beneficiary a cash sponsorship of\n<strong>{{AMOUNT}}</strong>, under the applicable tax-redirection mechanism.</p>\n\n<p>2.2. The funds will be used by the Beneficiary to deliver its programme\nactivities, in line with its stated mission.</p>\n\n<h2>III. OBLIGATIONS</h2>\n\n<p>3.1. The sponsored amount is transferred to the Beneficiary's account by the\ntax authority. The Sponsor must file the applicable declaration within the\nstatutory deadline.</p>\n\n<p>3.2. The Beneficiary may acknowledge the sponsorship publicly, naming the\nSponsor and the amount, subject to the Sponsor's approval.</p>\n\n<p>3.3. The Beneficiary undertakes to use the funds solely for the stated\npurpose and to report on their use.</p>\n\n<p>3.4. The Sponsor undertakes not to direct the Beneficiary's activity,\nwhether directly or indirectly.</p>\n\n<h2>IV. TERM</h2>\n\n<p>4.1. This agreement enters into force on the date of signature and remains\nvalid until completion of the programme.</p>\n\n<h2>V. TERMINATION</h2>\n\n<p>5.1. This agreement terminates by operation of law, without the need for\ncourt intervention, if either party:</p>\n<ul>\n  <li>fails to perform one of the essential obligations set out in section III;</li>\n  <li>is declared insolvent or enters liquidation before performance begins;</li>\n  <li>assigns its rights and obligations without the other party's consent.</li>\n</ul>\n\n<h2>VI. FORCE MAJEURE</h2>\n\n<p>6.1. Neither party is liable for delayed or improper performance caused by\nforce majeure as defined by law.</p>\n\n<p>6.2. The party invoking force majeure must notify the other within 3 days\nand take all reasonable steps to limit its consequences.</p>\n\n<h2>VII. GOVERNING LAW AND DISPUTES</h2>\n\n<p>7.1. The parties will seek to resolve any dispute amicably. Failing that,\nthe competent courts have jurisdiction.</p>\n\n<h2>VIII. FINAL PROVISIONS</h2>\n\n<p>8.1. Amendments require a written addendum signed by both parties.</p>\n\n<p>8.2. Executed in 2 counterparts, one for each party, on {{CONTRACT_DATE}}.</p>\n\n<table class=\"signatures\">\n  <tr>\n    <td>\n      <strong>SPONSOR</strong><br>\n      {{SPONSOR_NAME}}<br>\n      {{SPONSOR_SIGNATORY}}<br>\n      {{SPONSOR_ROLE}}\n      <div class=\"sign-space\"></div>\n      _______________________\n    </td>\n    <td>\n      <strong>BENEFICIARY</strong><br>\n      Example Foundation<br>\n      President\n      <div class=\"sign-space\">\n        <!-- Signature image is served from a non-public path at runtime.\n             Never reference a scanned signature from a public URL. -->\n      </div>\n      _______________________\n    </td>\n  </tr>\n</table>\n\n</body>\n</html>`;\n\nconst html = TEMPLATE\n  .split('{{CONTRACT_NO}}').join(contractNo)\n  .split('{{CONTRACT_DATE}}').join(contractDate)\n  .split('{{SPONSOR_NAME}}').join(esc(b.legal_name))\n  .split('{{SPONSOR_ADDRESS}}').join(esc(b.address))\n  .split('{{SPONSOR_TAX_ID}}').join(esc(b.tax_id))\n  .split('{{SPONSOR_REG_NO}}').join(esc(b.reg_number))\n  .split('{{SPONSOR_IBAN}}').join(esc(b.iban).toUpperCase().replace(/\\s+/g, ''))\n  .split('{{SPONSOR_BANK}}').join(esc(b.bank))\n  .split('{{SPONSOR_SIGNATORY}}').join(signatory)\n  .split('{{SPONSOR_ROLE}}').join(esc(b.role))\n  .split('{{AMOUNT}}').join(amount);\n\n// Clean filename: Contract_CTR1_Example-Ltd.pdf\nconst slug = String(b.legal_name || 'company')\n  .normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')   // strip diacritics\n  .replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '');\nconst fileName = 'Contract_' + contractNo + '_' + slug;\n\nreturn [{\n  json: {\n    contract_no: contractNo,\n    contract_date: contractDate,\n    amount: amount,\n    legal_name: String(b.legal_name || ''),\n    email: String(b.email || ''),\n    signatory: signatory,\n    file_name: fileName\n  },\n  binary: {\n    index: {\n      data: Buffer.from(html, 'utf-8').toString('base64'),\n      mimeType: 'text/html',\n      fileName: 'index.html'\n    }\n  }\n}];\n"
+      },
+      "id": "REDACTED",
+      "name": "Build Contract HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://gotenberg:3000/forms/chromium/convert/html",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Gotenberg-Output-Filename",
+              "value": "=={{ $json.nume_fisier }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "files",
+              "inputDataFieldName": "index"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "contract"
+            }
+          }
+        }
+      },
+      "id": "REDACTED",
+      "name": "Gotenberg HTML to PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -128,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"ok\", \"nr_contract\": \"{{ $('Construieste HTML').item.json.nr_contract }}\" }",
+        "options": {}
+      },
+      "id": "REDACTED",
+      "name": "Respond Contract",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        464,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "SHEET_ID_PLACEHOLDER",
+          "mode": "id",
+          "cachedResultName": "Contract Registry"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -480,
+        320
+      ],
+      "id": "REDACTED",
+      "name": "Read Contract Registry",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleApi": {
+          "id": "REDACTED",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "SHEET_ID_PLACEHOLDER",
+          "mode": "list",
+          "cachedResultName": "Contract Registry"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Numar contract": "={{ $('Construieste HTML').item.json.nr_contract }}",
+            "Data": "={{ $('Construieste HTML').item.json.data_contract }}",
+            "Firma": "={{ $('Construieste HTML').item.json.denumire }}",
+            "Suma": "={{ $('Construieste HTML').item.json.suma }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Numar contract",
+              "displayName": "Numar contract",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Data",
+              "displayName": "Data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Firma",
+              "displayName": "Firma",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Suma",
+              "displayName": "Suma",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        304,
+        304
+      ],
+      "id": "REDACTED",
+      "name": "Write Contract Registry",
+      "credentials": {
+        "googleApi": {
+          "id": "REDACTED",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Stage 1 - Company lookup and validation\nLocal validation runs before the metered registry API call.",
+        "height": 304,
+        "width": 1360
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -704,
+        -32
+      ],
+      "id": "REDACTED",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Stage 2 - Generate contract, log number, send",
+        "height": 288,
+        "width": 1360,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -704,
+        272
+      ],
+      "id": "REDACTED",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "fromEmail": "Example Foundation <noreply@example.com>",
+        "toEmail": "={{ $('Build Contract HTML').item.json.email }}",
+        "subject": "=Your sponsorship agreement {{ $('Build Contract HTML').item.json.contract_no }} - Example Foundation",
+        "html": "=<p>Hello {{ $('Build Contract HTML').item.json.signatory }},</p>\n<p>Thank you. Attached is <strong>sponsorship agreement no. {{ $('Build Contract HTML').item.json.contract_no }}</strong> between <strong>{{ $('Build Contract HTML').item.json.legal_name }}</strong> and Example Foundation, for {{ $('Build Contract HTML').item.json.amount }}.</p>\n<p>Please sign both counterparts and return one to us.</p>\n<p>Kind regards,<br>Example Foundation</p>",
+        "options": {
+          "attachments": "contract",
+          "bccEmail": "archive@example.com"
+        }
+      },
+      "id": "REDACTED",
+      "name": "Email Contract",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        96,
+        400
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REDACTED",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Company Lookup": {
+      "main": [
+        [
+          {
+            "node": "Validate Tax ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Tax ID": {
+      "main": [
+        [
+          {
+            "node": "Tax ID Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tax ID Valid": {
+      "main": [
+        [
+          {
+            "node": "Company Registry API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Company Registry API": {
+      "main": [
+        [
+          {
+            "node": "Map Registry Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Registry Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Contract Request": {
+      "main": [
+        [
+          {
+            "node": "Read Contract Registry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Contract HTML": {
+      "main": [
+        [
+          {
+            "node": "Gotenberg HTML to PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gotenberg HTML to PDF": {
+      "main": [
+        [
+          {
+            "node": "Email Contract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Contract Registry": {
+      "main": [
+        [
+          {
+            "node": "Build Contract HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Contract Registry": {
+      "main": [
+        [
+          {
+            "node": "Respond Contract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Contract": {
+      "main": [
+        [
+          {
+            "node": "Write Contract Registry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "REDACTED",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "REDACTED"
+  },
+  "nodeGroups": [],
+  "id": "REDACTED",
+  "tags": []
+}
