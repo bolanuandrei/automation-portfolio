@@ -14,7 +14,7 @@ Production automations I designed and shipped: process mapping, low-code impleme
 | # | Project | Problem solved | Stack | Result |
 |---|---|---|---|---|
 | 01 | [Self-service sponsorship contract generator](./build/01-contract-generator/) | Manual contract drafting for every NGO sponsor | n8n, Gotenberg, Google Sheets, company registry API | Contract issued in under 2 min, unattended |
-| 02 | [AI visual regression monitoring](./build/02-visual-regression/) | Broken layouts discovered by clients, not by us | n8n, ApiFlash, Gemini Vision, SMTP | 7 sites checked weekly, zero manual review |
+| 02 | [AI visual check monitoring](./build/02-visual-check/) | Broken layouts discovered by clients, not by us | n8n, ApiFlash, Gemini Vision, SMTP | 7 sites checked weekly, zero manual review |
 | 03 | [Multi-site uptime monitoring with alert suppression](./build/03-uptime-monitoring/) | No visibility when a client site went down | n8n, HTTP checks, workflow static data | 10 endpoints, 30-min interval, no alert spam |
 | 04 | [RSS-to-Google Business Profile publishing](./build/04-gbp-publishing/) | Manual reposting of every new article | n8n, RSS, GPT, Google Business Profile API | Weekly publishing, duplicate-safe |
 | 05 | [Quiz lead capture with conditional routing](./build/05-lead-capture/) | Leads sat in a form, follow-up depended on memory | n8n, webhooks, AcyMailing REST API | Instant list subscription + owner alert |
