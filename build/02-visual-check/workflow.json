@@ -1,0 +1,242 @@
+{
+  "name": "AI Visual Check Monitoring (v2 - copy audit)",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Target site under audit.\n// Kept in code rather than a database: the list changes rarely\n// and versioning it alongside the workflow is simpler to reason about.\n\nreturn {\n  url: \"https://example.com\",\n  name: \"Example Homepage\"\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        -16
+      ],
+      "id": "REDACTED",
+      "name": "Target Site"
+    },
+    {
+      "parameters": {
+        "url": "https://api.apiflash.com/v1/urltoimage",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_key",
+              "value": "REDACTED"
+            },
+            {
+              "name": "url",
+              "value": "={{ $json.url }}"
+            },
+            {
+              "name": "format",
+              "value": "jpeg"
+            },
+            {
+              "name": "full_page",
+              "value": "true"
+            },
+            {
+              "name": "width",
+              "value": "1920"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        64,
+        -16
+      ],
+      "id": "REDACTED",
+      "name": "Capture Screenshot"
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-pro",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-pro"
+        },
+        "text": "You are a QA web tester and senior conversion copywriter. Write in a formal-modern, direct, human style.\n\nFORBIDDEN: no filler or AI cliches — avoid words like \"currently\", \"essential\", \"approach\", \"synergy\", \"leverage\", \"implementation\", \"in today's landscape\".\nStructure: short, pointed sentences. No long compound clauses.\nTone: a senior expert talking to a business partner. Be pragmatic, don't theorise.\nNo preamble: never open with \"Sure, here's your audit\" or \"After careful analysis\". Go straight to the point.\nIn the 'audit' field, put each section (WIIFM test, power words, etc.) on its own line, separated by the \\n character.\n\nSTEP 1 — Layout check.\nLook for a broken layout: missing stylesheet, overlapping elements, visible rendering errors, or server errors (e.g. HTTP 500).\nIf layout and structure look correct, continue to step 2.\n\nSTEP 2 — Copy audit.\nActing as a senior copywriter and conversion-focused UX strategist, review the page copy visible in the screenshot. Give a critical audit of at most 300 words, against these four criteria:\n\n1. WIIFM test — is the copy centred on the customer's benefit, or on the company praising itself? Check the pronoun ratio (You vs. We).\n2. Power words — identify where the copy goes flat, and suggest higher-impact wording from the safety, trust and clarity registers.\n3. Jargon removal — flag technical terms likely to lose a non-technical visitor or a busy business owner. Propose plain analogies instead.\n4. CTA audit — are the calls to action strong, direct, and do they remove the customer's fear of making a mistake?\n\nIgnore missing images if the overall layout holds. Ignore the text content of images themselves.\n\nRespond STRICTLY with a valid JSON object:\n{ \"design\": {\"broken\": true/false, \"reason\": \"...\"}, \"copy\": {\"needs_work\": true/false, \"audit\": \"...\"} }",
+        "inputType": "binary",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        288,
+        -16
+      ],
+      "id": "REDACTED",
+      "name": "Vision Audit",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "REDACTED",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "REDACTED",
+              "leftValue": "={{ JSON.parse($json.content.parts[0].text.replace(/```json/g, '').replace(/```/g, '')).design.broken || JSON.parse($json.content.parts[0].text.replace(/```json/g, '').replace(/```/g, '')).copy.needs_work }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        512,
+        -16
+      ],
+      "id": "REDACTED",
+      "name": "Issues Found"
+    },
+    {
+      "parameters": {
+        "fromEmail": "monitoring@example.com",
+        "toEmail": "alerts@example.com",
+        "subject": "=Site audit: {{ $('Target Site').item.json.name }}",
+        "html": "=<div style=\"font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 800px; border: 1px solid #eee; padding: 20px; border-radius: 8px;\">\n  <h2 style=\"color: #0056b3; border-bottom: 2px solid #0056b3; padding-bottom: 10px;\">Site audit: {{ $('Target Site').item.json.name }}</h2>\n\n  <p><strong>URL analysed:</strong> <a href=\"{{ $('Target Site').item.json.url }}\" style=\"color: #0056b3;\">{{ $('Target Site').item.json.url }}</a></p>\n\n  <div style=\"background-color: #fff5f5; border-left: 5px solid #d9534f; padding: 15px; margin: 20px 0;\">\n    <h3 style=\"color: #d9534f; margin-top: 0;\">Design status</h3>\n    <p>{{ JSON.parse($json.content.parts[0].text.replace(/```json/g, '').replace(/```/g, '')).design.reason }}</p>\n  </div>\n\n  <div style=\"background-color: #f0faff; border-left: 5px solid #5bc0de; padding: 15px; margin: 20px 0;\">\n    <h3 style=\"color: #007bb5; margin-top: 0;\">Copy audit</h3>\n    <p>{{ JSON.parse($json.content.parts[0].text.replace(/```json/g, '').replace(/```/g, '')).copy.audit.replace(/\\n/g, '<br>') }}</p>\n  </div>\n</div>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        784,
+        -16
+      ],
+      "id": "REDACTED",
+      "name": "Send Audit Report",
+      "webhookId": "REDACTED",
+      "credentials": {
+        "smtp": {
+          "id": "REDACTED",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -368,
+        -16
+      ],
+      "id": "REDACTED",
+      "name": "Manual Trigger"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Target Site": {
+      "main": [
+        [
+          {
+            "node": "Capture Screenshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capture Screenshot": {
+      "main": [
+        [
+          {
+            "node": "Vision Audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vision Audit": {
+      "main": [
+        [
+          {
+            "node": "Issues Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Issues Found": {
+      "main": [
+        [
+          {
+            "node": "Send Audit Report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Send Audit Report": {
+      "main": [
+        []
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Target Site",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "saveExecutionProgress": true
+  },
+  "versionId": "REDACTED",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "REDACTED"
+  },
+  "nodeGroups": [],
+  "id": "REDACTED",
+  "tags": []
+}
