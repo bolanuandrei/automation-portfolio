@@ -1,0 +1,459 @@
+{
+  "name": "RSS to Google Business Profile",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "https://example.com/feed/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -640,
+        144
+      ],
+      "id": "REDACTED",
+      "name": "Read RSS Feed",
+      "executeOnce": false,
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "maxItems": 10
+      },
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        -416,
+        144
+      ],
+      "id": "REDACTED",
+      "name": "Latest 10 Articles"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.link.replace('https://example.com', 'http://ORIGIN_IP') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Host",
+              "value": "example.com"
+            },
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "redirect": {
+            "redirect": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        256,
+        -224
+      ],
+      "id": "REDACTED",
+      "name": "Fetch Article Content"
+    },
+    {
+      "parameters": {
+        "content": "### Take the 10 most recent articles",
+        "height": 80,
+        "width": 230
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -592,
+        288
+      ],
+      "id": "REDACTED",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "### Check against the last 20 GBP posts",
+        "height": 80,
+        "width": 182
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -224,
+        304
+      ],
+      "id": "REDACTED",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "",
+        "height": 336,
+        "width": 870
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -896,
+        64
+      ],
+      "id": "REDACTED",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 7
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -864,
+        144
+      ],
+      "id": "REDACTED",
+      "name": "Weekly Schedule"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "GPT-5.2"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=Your role: you are a social media and copywriting specialist for a health and wellbeing platform that connects people with vetted specialists and publishes free educational articles. Your tone is empathetic, professional and educational, but friendly and easy to follow.\n\nYour task: read the article below and write a post optimised for Google Business Profile that promotes it.\n\nStrict rules:\n\nLength: 1000 characters maximum. Concise and easy to scan.\n\nHook: open with a question or a strong statement that names a problem (e.g. \"Struggling with [condition]?\") to earn attention in the first two lines.\n\nBody: pull 2-3 key ideas from the article. Use a short bulleted list for readability.\n\nCall to action: always close with a clear invitation to read the full article on the site, referencing the [Learn more] button below the post.\n\nHashtags: add 3-4 relevant hashtags at the end.\n\nNo complex medical jargon: if the article uses technical terms, explain them in plain language.\n\nArticle to process:\nTitle: [{{ $('Select Unposted Article').item.json.title }}]\nContent: [{{ $('Select Unposted Article').item.json.content }}]"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        432,
+        128
+      ],
+      "id": "REDACTED",
+      "name": "Generate Post Copy",
+      "credentials": {
+        "openAiApi": {
+          "id": "REDACTED",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "### LLM summarisation\nRewrites the article to a platform-specific brief",
+        "height": 80,
+        "width": 246,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        432,
+        288
+      ],
+      "id": "REDACTED",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "account": {
+          "__rl": true,
+          "value": "accounts/ACCOUNT_ID",
+          "mode": "list",
+          "cachedResultName": "accounts/ACCOUNT_ID"
+        },
+        "location": {
+          "__rl": true,
+          "value": "locations/LOCATION_ID",
+          "mode": "list",
+          "cachedResultName": "locations/LOCATION_ID"
+        },
+        "summary": "={{ $json.output[0].content[0].text }}",
+        "additionalOptions": {
+          "languageCode": "en",
+          "callToActionType": "LEARN_MORE",
+          "url": "={{ $('Select Unposted Article').item.json.link }}"
+        },
+        "requestOptions": {}
+      },
+      "type": "n8n-nodes-base.googleBusinessProfile",
+      "typeVersion": 1,
+      "position": [
+        784,
+        128
+      ],
+      "id": "REDACTED",
+      "name": "Publish to GBP",
+      "credentials": {
+        "googleBusinessProfileOAuth2Api": {
+          "id": "REDACTED",
+          "name": "Google Business Profile account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Deduplicate against the platform's own post history.\n// No local record of what has been posted: the API is the source of truth, so\n// there is no second state to drift or corrupt. Delete a post manually and the\n// article becomes eligible again.\n\nconst rssArticles = $(\"Latest 10 Articles\").all().map(item => item.json);\nconst publishedPosts = $(\"Fetch Post History\").all().map(item => item.json);\n\nlet articleToPost = null;\n\n// Walk newest-first; publish the first article not already on the profile.\nfor (const article of rssArticles) {\n\n  let link = article.link;\n  if (link.endsWith('/')) {\n    link = link.slice(0, -1);   // RSS and the API disagree on trailing slashes\n  }\n\n  let alreadyPosted = false;\n\n  for (const post of publishedPosts) {\n    // The URL can live in the call-to-action button...\n    if (post.callToAction && post.callToAction.url && post.callToAction.url.includes(link)) {\n      alreadyPosted = true;\n      break;\n    }\n    // ...or inline in the post body. Check both.\n    if (post.summary && post.summary.includes(link)) {\n      alreadyPosted = true;\n      break;\n    }\n  }\n\n  if (!alreadyPosted) {\n    articleToPost = article;\n    break;\n  }\n}\n\nif (articleToPost) {\n  return [{ json: articleToPost }];\n} else {\n  // Everything in the feed is already published - halt this run.\n  return [];\n}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        32,
+        -224
+      ],
+      "id": "REDACTED",
+      "name": "Select Unposted Article"
+    },
+    {
+      "parameters": {
+        "content": "### Duplicate prevention",
+        "height": 96,
+        "width": 358,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        16,
+        -64
+      ],
+      "id": "REDACTED",
+      "name": "Sticky Note6",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "account": {
+          "__rl": true,
+          "value": "accounts/ACCOUNT_ID",
+          "mode": "list",
+          "cachedResultName": "accounts/ACCOUNT_ID"
+        },
+        "location": {
+          "__rl": true,
+          "value": "locations/LOCATION_ID",
+          "mode": "list",
+          "cachedResultName": "locations/LOCATION_ID"
+        },
+        "requestOptions": {}
+      },
+      "type": "n8n-nodes-base.googleBusinessProfile",
+      "typeVersion": 1,
+      "position": [
+        -192,
+        144
+      ],
+      "id": "REDACTED",
+      "name": "Fetch Post History",
+      "executeOnce": true,
+      "credentials": {
+        "googleBusinessProfileOAuth2Api": {
+          "id": "REDACTED",
+          "name": "Google Business Profile account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Publish the summary with a link on Google Business Profile",
+        "height": 112,
+        "width": 278,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        720,
+        272
+      ],
+      "id": "REDACTED",
+      "name": "Sticky Note7"
+    },
+    {
+      "parameters": {
+        "content": "## Every Monday at 07:00",
+        "height": 80,
+        "width": 208
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -896,
+        288
+      ],
+      "id": "REDACTED",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "",
+        "height": 336,
+        "width": 448,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        -304
+      ],
+      "id": "REDACTED",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "content": "",
+        "height": 336,
+        "width": 624,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        400,
+        64
+      ],
+      "id": "REDACTED",
+      "name": "Sticky Note8"
+    },
+    {
+      "parameters": {
+        "content": "# Automated Google Business Profile publishing",
+        "height": 256,
+        "width": 304
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        48,
+        128
+      ],
+      "id": "REDACTED",
+      "name": "Sticky Note9"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Read RSS Feed": {
+      "main": [
+        [
+          {
+            "node": "Latest 10 Articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Latest 10 Articles": {
+      "main": [
+        [
+          {
+            "node": "Fetch Post History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weekly Schedule": {
+      "main": [
+        [
+          {
+            "node": "Read RSS Feed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Post Copy": {
+      "main": [
+        [
+          {
+            "node": "Publish to GBP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Post History": {
+      "main": [
+        [
+          {
+            "node": "Select Unposted Article",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Unposted Article": {
+      "main": [
+        [
+          {
+            "node": "Fetch Article Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Article Content": {
+      "main": [
+        [
+          {
+            "node": "Generate Post Copy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "timezone": "Europe/Bucharest",
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "REDACTED",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "REDACTED"
+  },
+  "nodeGroups": [],
+  "id": "REDACTED",
+  "tags": []
+}
