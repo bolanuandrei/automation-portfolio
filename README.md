@@ -2,7 +2,7 @@
 
 Production automations I designed and shipped: process mapping, low-code implementation, API integration, and the results they produced.
 
-**Stack:** n8n · Power Automate · Make · Zapier · Google Apps Script · REST APIs · Docker · Python (basic) · Third-party SAAS
+**Stack:** n8n · Google Apps Script · REST APIs · Make · ZapierDocker · Python (basic) · Third-party SAAS
 
 📍 Timișoara, Romania · Open to remote / hybrid
 🔗 LinkedIn (https://www.linkedin.com/in/bolanuandrei/) · ✉️ bolanu.andrei@gmail.com
